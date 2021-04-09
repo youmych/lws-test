@@ -15,7 +15,7 @@
 #include <signal.h>
 #include <pthread.h>
 
-#define COUNT_THREADS 8
+#define COUNT_THREADS 1
 
 /*
  * This represents your object that "contains" the client connection and has
@@ -182,6 +182,7 @@ int main(int argc, const char **argv)
 	info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
 	info.port = CONTEXT_PORT_NO_LISTEN; /* we do not run any server */
 	info.protocols = protocols;
+    info.count_threads = COUNT_THREADS;
 
 #if defined(LWS_WITH_MBEDTLS) || defined(USE_WOLFSSL)
 	/*
