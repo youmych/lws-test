@@ -3,7 +3,7 @@ cmake_minimum_required (VERSION 3.10)
 project(lws-test LANGUAGES C)
 
 set(SOURCES  
-    src/minimal-http-client.c
+    src/minimal-ws-client.c
 )
 
 # Search our cmake-related tools into ./cmake directory                         
@@ -26,6 +26,7 @@ target_enable_all_compiler_warnings(lws-test)
 
 # system libs
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(THIRD_PARTY_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/install)
 
@@ -64,17 +65,17 @@ ExternalProject_Add(libwebsockets
                -DLWS_WITH_GLIB=0                # glib
                -DLWS_WITH_LIBUV=0               # libuv
                -DLWS_WITH_LIBEVENT=0            # libevent
-               -DLWS_WITHOUT_TEST_APPS=1
+               -DLWS_WITH_TEST_APPS=1
 
-               -DLWS_WITH_SSL=0
-               -DLWS_WITH_TLS=0
+               -DLWS_WITH_SSL=1
+               -DLWS_WITH_TLS=1
                -DLWS_WITH_MBEDTLS=0
                -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
 )
 ExternalProject_Get_Property(libwebsockets SOURCE_DIR INSTALL_DIR)
-set(SDK_LIBWEBSOCKETS_LIB "${INSTALL_DIR}/lib/libwebsockets.a")
+set(PRO_LIBWEBSOCKETS_LIB "${INSTALL_DIR}/lib/libwebsockets.a")
 add_library(websockets STATIC IMPORTED)
-set_property(TARGET websockets PROPERTY IMPORTED_LOCATION ${SDK_LIBWEBSOCKETS_LIB})
+set_property(TARGET websockets PROPERTY IMPORTED_LOCATION ${PRO_LIBWEBSOCKETS_LIB})
 ################################################################################
 
 target_include_directories(lws-test
@@ -86,6 +87,6 @@ target_include_directories(lws-test
         $<BUILD_INTERFACE:${THIRD_PARTY_INSTALL_DIR}/include>
 )
 
-target_link_libraries(lws-test PUBLIC websockets pthread m)
+target_link_libraries(lws-test PUBLIC websockets crypto ssl pthread m)
 add_dependencies(lws-test libwebsockets)
 
