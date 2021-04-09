@@ -48,7 +48,7 @@ ExternalProject_Add(libwebsockets
                -DLWS_WITH_HTTP_PROXY=1
                -DLWS_ROLE_RAW_PROXY=1
 
-               -DLWS_MAX_SMP=1
+               -DLWS_MAX_SMP=8
 
                -DLWS_WITH_HTTP_STREAM_COMPRESSION=0 # +deps libz
                -DLWS_WITH_HTTP2=0

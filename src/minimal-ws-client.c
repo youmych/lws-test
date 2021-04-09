@@ -13,6 +13,9 @@
 #include <libwebsockets.h>
 #include <string.h>
 #include <signal.h>
+#include <pthread.h>
+
+#define COUNT_THREADS 8
 
 /*
  * This represents your object that "contains" the client connection and has
@@ -28,7 +31,8 @@ static struct my_conn {
 static struct lws_context *context;
 static int interrupted, port = 443, ssl_connection = LCCSCF_USE_SSL;
 static const char *server_address = "libwebsockets.org",
-		  *pro = "dumb-increment-protocol";
+          *pro = "dumb-increment-protocol",
+          *server_path = "/";
 
 /*
  * The retry and backoff policy we want to use for our client connections
@@ -62,7 +66,7 @@ connect_client(lws_sorted_usec_list_t *sul)
 	i.context = context;
 	i.port = port;
 	i.address = server_address;
-	i.path = "/";
+    i.path = server_path;
 	i.host = i.address;
 	i.origin = i.address;
 	i.ssl_connection = ssl_connection;
@@ -141,17 +145,33 @@ static const struct lws_protocols protocols[] = {
 	{ NULL, NULL, 0, 0 }
 };
 
+// from minimal-http-server-smp.c
+void *thread_service(void *threadid)
+{
+    while (lws_service_tsi(context, 10000,
+                   (int)(lws_intptr_t)threadid) >= 0 &&
+           !interrupted)
+        ;
+
+    pthread_exit(NULL);
+
+    return NULL;
+}
+
 static void
 sigint_handler(int sig)
 {
 	interrupted = 1;
+    lws_cancel_service(context);
 }
 
 int main(int argc, const char **argv)
 {
+    pthread_t pthread_service[COUNT_THREADS];
 	struct lws_context_creation_info info;
 	const char *p;
 	int n = 0;
+    void* retval = NULL;
 
 	signal(SIGINT, sigint_handler);
 	memset(&info, 0, sizeof info);
@@ -173,6 +193,9 @@ int main(int argc, const char **argv)
 
 	if ((p = lws_cmdline_option(argc, argv, "--protocol")))
 		pro = p;
+
+    if ((p = lws_cmdline_option(argc, argv, "--path")))
+        server_path = p;
 
 	if ((p = lws_cmdline_option(argc, argv, "-s")))
 		server_address = p;
@@ -206,8 +229,19 @@ int main(int argc, const char **argv)
 	/* schedule the first client connection attempt to happen immediately */
 	lws_sul_schedule(context, 0, &mco.sul, connect_client, 1);
 
-	while (n >= 0 && !interrupted)
-		n = lws_service(context, 0);
+    lwsl_notice("  Service threads: %d\n", lws_get_count_threads(context));
+
+     /* start all the service threads */
+
+     for (n = 0; n < lws_get_count_threads(context); n++)
+         if (pthread_create(&pthread_service[n], NULL, thread_service,
+                    (void *)(lws_intptr_t)n))
+             lwsl_err("Failed to start service thread\n");
+
+     /* wait for all the service threads to exit */
+
+     while ((--n) >= 0)
+         pthread_join(pthread_service[n], &retval);
 
 	lws_context_destroy(context);
 	lwsl_user("Completed\n");
