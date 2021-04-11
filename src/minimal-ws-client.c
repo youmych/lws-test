@@ -15,7 +15,7 @@
 #include <signal.h>
 #include <pthread.h>
 
-#define COUNT_THREADS 1
+#define COUNT_THREADS 8
 
 /*
  * This represents your object that "contains" the client connection and has
@@ -29,6 +29,7 @@ static struct my_conn {
 } mco;
 
 static struct lws_context *context;
+static struct lws_vhost* ws_client_vhost;
 static int interrupted, port = 443, ssl_connection = LCCSCF_USE_SSL;
 static const char *server_address = "libwebsockets.org",
           *pro = "dumb-increment-protocol",
@@ -179,11 +180,6 @@ int main(int argc, const char **argv)
 
 	lwsl_user("LWS minimal ws client\n");
 
-	info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-	info.port = CONTEXT_PORT_NO_LISTEN; /* we do not run any server */
-	info.protocols = protocols;
-    info.count_threads = COUNT_THREADS;
-
 #if defined(LWS_WITH_MBEDTLS) || defined(USE_WOLFSSL)
 	/*
 	 * OpenSSL uses the system trust store.  mbedTLS has to be told which
@@ -219,13 +215,29 @@ int main(int argc, const char **argv)
 	if (lws_cmdline_option(argc, argv, "-e"))
 		ssl_connection |= LCCSCF_ALLOW_EXPIRED;
 
-	info.fd_limit_per_thread = 1 + 1 + 1;
+    /* #1 create service context without any vhost */
+    info.options = LWS_SERVER_OPTION_EXPLICIT_VHOSTS;
+    info.count_threads = COUNT_THREADS;
 
 	context = lws_create_context(&info);
 	if (!context) {
 		lwsl_err("lws init failed\n");
 		return 1;
 	}
+
+    /* #2 Create a vhost for a ws client */
+    memset(&info, 0, sizeof info);
+    info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+    info.port = CONTEXT_PORT_NO_LISTEN; /* we do not run any server */
+    info.protocols = protocols;
+    info.fd_limit_per_thread = 1 + 1 + 1;
+
+    ws_client_vhost = lws_create_vhost(context, &info);
+    if (!ws_client_vhost) {
+        lwsl_err("WebSocket client lws vhost creation failed\n");
+        lws_context_destroy(context);
+        return 1;
+    }
 
 	/* schedule the first client connection attempt to happen immediately */
 	lws_sul_schedule(context, 0, &mco.sul, connect_client, 1);
