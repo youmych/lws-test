@@ -28,12 +28,17 @@ static struct my_conn {
 	uint16_t		retry_count; /* count of consequetive retries */
 } mco;
 
+static char tx_buf[LWS_PRE + 1024];
+static int tx_buf_is_ready = 0;
+
 static struct lws_context *context;
 static struct lws_vhost* ws_client_vhost;
 static int interrupted, port = 443, ssl_connection = LCCSCF_USE_SSL;
 static const char *server_address = "libwebsockets.org",
           *pro = "dumb-increment-protocol",
           *server_path = "/";
+
+
 
 /*
  * The retry and backoff policy we want to use for our client connections
@@ -43,8 +48,8 @@ static const uint32_t backoff_ms[] = { 1000, 2000, 3000, 4000, 5000 };
 
 static const lws_retry_bo_t retry = {
 	.retry_ms_table			= backoff_ms,
-	.retry_ms_table_count		= LWS_ARRAY_SIZE(backoff_ms),
-	.conceal_count			= LWS_ARRAY_SIZE(backoff_ms),
+    .retry_ms_table_count	= LWS_ARRAY_SIZE(backoff_ms),
+    .conceal_count			= LWS_ARRAY_SIZE(backoff_ms) +1,
 
 	.secs_since_valid_ping		= 3,  /* force PINGs after secs idle */
 	.secs_since_valid_hangup	= 10, /* hangup after secs idle */
@@ -98,6 +103,54 @@ callback_minimal(struct lws *wsi, enum lws_callback_reasons reason,
 
 	switch (reason) {
 
+    case LWS_CALLBACK_CLIENT_HTTP_BIND_PROTOCOL:
+        lwsl_user("%s: LWS_CALLBACK_CLIENT_HTTP_BIND_PROTOCOL\n", __func__);
+        break;
+    case LWS_CALLBACK_SERVER_NEW_CLIENT_INSTANTIATED:
+        lwsl_user("%s: LWS_CALLBACK_SERVER_NEW_CLIENT_INSTANTIATED\n", __func__);
+        break;
+    case LWS_CALLBACK_WSI_CREATE:
+        lwsl_user("%s: LWS_CALLBACK_WSI_CREATE: wsi=%p\n", __func__, wsi);
+        break;
+    case LWS_CALLBACK_WSI_DESTROY:
+        lwsl_user("%s: LWS_CALLBACK_WSI_DESTROY: wsi=%p\n", __func__, wsi);
+        break;
+    case LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER:
+        lwsl_user("%s: LWS_CALLBACK_CLIENT_APPEND_HANDSHAKE_HEADER. wsi->parent = %p\n", __func__, lws_get_parent(wsi));
+        break;
+    case LWS_CALLBACK_ESTABLISHED_CLIENT_HTTP:
+        lwsl_user("%s: LWS_CALLBACK_ESTABLISHED_CLIENT_HTTP\n", __func__);
+        break;
+    case LWS_CALLBACK_CLIENT_FILTER_PRE_ESTABLISH:
+        lwsl_user("%s: LWS_CALLBACK_CLIENT_FILTER_PRE_ESTABLISH\n", __func__);
+        break;
+    case LWS_CALLBACK_CLIENT_HTTP_REDIRECT:
+        lwsl_user("%s: LWS_CALLBACK_CLIENT_HTTP_REDIRECT. wsi->parent = %p\n", __func__, lws_get_parent(wsi));
+        break;
+    case LWS_CALLBACK_RECEIVE_CLIENT_HTTP:
+        lwsl_user("%s: LWS_CALLBACK_RECEIVE_CLIENT_HTTP\n", __func__);
+        break;
+    case LWS_CALLBACK_RECEIVE_CLIENT_HTTP_READ:
+        lwsl_user("%s: LWS_CALLBACK_RECEIVE_CLIENT_HTTP_READ\n", __func__);
+        break;
+
+    case LWS_CALLBACK_CLIENT_WRITEABLE: {
+        lwsl_user("%s: LWS_CALLBACK_CLIENT_WRITEABLE\n", __func__);
+        if( !tx_buf_is_ready ) {
+            strcpy(tx_buf + LWS_PRE, "Hello, world!\n");
+            tx_buf_is_ready = 1;
+            lws_callback_on_writable(wsi);
+        }
+        else {
+            size_t len = strlen(tx_buf + LWS_PRE);
+            lws_write(wsi, tx_buf + LWS_PRE, len, 0);
+            tx_buf_is_ready = 0;
+        }
+    } break;
+
+    case LWS_CALLBACK_PROTOCOL_INIT:
+        lwsl_user("LWS_CALLBACK_PROTOCOL_INIT: wsi parent = %p\n", lws_get_parent(wsi));
+        break;
 	case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
 		lwsl_err("CLIENT_CONNECTION_ERROR: %s\n",
 			 in ? (char *)in : "(null)");
@@ -105,15 +158,20 @@ callback_minimal(struct lws *wsi, enum lws_callback_reasons reason,
 		break;
 
 	case LWS_CALLBACK_CLIENT_RECEIVE:
+        lwsl_info("LWS_CALLBACK_CLIENT_RECEIVE: wsi parent = %p\n", lws_get_parent(wsi));
 		lwsl_hexdump_notice(in, len);
 		break;
 
 	case LWS_CALLBACK_CLIENT_ESTABLISHED:
+        lwsl_user("LWS_CALLBACK_CLIENT_ESTABLISHED: wsi parent = %p\n", lws_get_parent(wsi));
 		lwsl_user("%s: established\n", __func__);
 		break;
 
 	case LWS_CALLBACK_CLIENT_CLOSED:
 		goto do_retry;
+
+    case LWS_CALLBACK_GET_THREAD_ID: // Multithread detection support for lws
+        return (uint64_t)pthread_self();
 
 	default:
 		break;
@@ -177,6 +235,15 @@ int main(int argc, const char **argv)
 	signal(SIGINT, sigint_handler);
 	memset(&info, 0, sizeof info);
 	lws_cmdline_option_handle_builtin(argc, argv, &info);
+
+    const int log = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
+            // for LLL_ verbosity above NOTICE to be built into lws,
+            // lws must have been configured and built with
+            // -DCMAKE_BUILD_TYPE=DEBUG instead of =RELEASE
+            | LLL_INFO /* | LLL_PARSER */ | LLL_HEADER
+            /* | LLL_EXT */ | LLL_CLIENT /* | LLL_LATENCY */
+            /* | LLL_DEBUG */ | LLL_THREAD;
+    lws_set_log_level(log, NULL);
 
 	lwsl_user("LWS minimal ws client\n");
 
