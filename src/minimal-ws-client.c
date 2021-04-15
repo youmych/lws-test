@@ -200,7 +200,15 @@ do_retry:
 }
 
 static const struct lws_protocols protocols[] = {
-	{ "lws-minimal-client", callback_minimal, 0, 0, },
+    {
+        .name = "lws-minimal-client",
+        .callback = callback_minimal,
+        .per_session_data_size = 0,
+        .rx_buffer_size = 0,
+        .id = 42,
+        .user = NULL,
+        .tx_packet_size = 0
+    },
 	{ NULL, NULL, 0, 0 }
 };
 
