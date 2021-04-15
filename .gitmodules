@@ -1,3 +1,6 @@
 [submodule "thirdparty/libwebsockets"]
 	path = thirdparty/libwebsockets
 	url = https://github.com/warmcat/libwebsockets.git
+[submodule "thirdparty/mbedtls"]
+	path = thirdparty/mbedtls
+	url = https://github.com/ARMmbed/mbedtls.git
