@@ -16,17 +16,23 @@ include(CMakePrintHelpers)  # cmake debug stuff
 include(compiler_options)   # our compiler stuff                                
 
 add_executable(lws-test ${SOURCES})
+add_executable(lws-json-parser src/json-parser.c)
 
 set_target_properties(lws-test PROPERTIES
     C_STANDARD          99
     C_STANDARD_REQUIRED ON
     C_EXTENSIONS        ON
 )
+set_target_properties(lws-json-parser PROPERTIES
+    C_STANDARD          99
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS        ON
+)
 target_enable_all_compiler_warnings(lws-test)
+target_enable_all_compiler_warnings(lws-json-parser)
 
 # system libs
 find_package(Threads REQUIRED)
-#find_package(OpenSSL REQUIRED)
 
 set(THIRD_PARTY_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/install)
 
@@ -91,6 +97,7 @@ ExternalProject_Add(libwebsockets
                -DLWS_WITH_THREADPOOL=0
                -DLWS_WITH_FTS=0
                -DLWS_ROLE_DBUS=0
+               -DLWS_WITH_STRUCT_JSON=1
                -DLWS_WITH_LEJP_CONF=0
 
                -DDISABLE_WERROR=0               # set to 1 with libev
@@ -122,8 +129,18 @@ target_include_directories(lws-test
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${THIRD_PARTY_INSTALL_DIR}/include>
 )
+target_include_directories(lws-json-parser
+    INTERFACE
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${THIRD_PARTY_INSTALL_DIR}/include>
+    PRIVATE
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${THIRD_PARTY_INSTALL_DIR}/include>
+)
 
 target_link_libraries(lws-test PUBLIC websockets mbedtls mbedx509 mbedcrypto pthread m dl)
+target_link_libraries(lws-json-parser PUBLIC websockets mbedtls mbedx509 mbedcrypto pthread m dl)
 add_dependencies(libwebsockets libmbedtls)
 add_dependencies(lws-test libwebsockets)
+add_dependencies(lws-json-parser libwebsockets)
 
